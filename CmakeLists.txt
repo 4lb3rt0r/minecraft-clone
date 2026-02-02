@@ -1,0 +1,11 @@
+cmake_minimum_required(VERSION 3.10)
+
+project(MinecraftClone)
+
+# find_package(OpenGL REQUIRED)
+find_package(glad CONFIG REQUIRED)
+find_package(glfw3 CONFIG REQUIRED)
+find_package(glm CONFIG REQUIRED)
+
+add_executable(MinecraftClone main.cpp)
+target_link_libraries(MinecraftClone PUBLIC glfw glm::glm glad::glad)
