@@ -2,10 +2,16 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 #include <glm/glm.hpp>
+#include <filesystem>
+#define STB_IMAGE_IMPLEMENTATION
+#include <stb_image.h>
+
 #include "glm/gtc/matrix_transform.hpp"
 #include "game/Camera.h"
 
 using namespace std;
+
+namespace fs = std::filesystem;
 
 // settings
 const unsigned int SCR_WIDTH = 800;
@@ -14,19 +20,28 @@ const unsigned int SCR_HEIGHT = 600;
 // Shader C const strings
 const char *vertexShaderSource = "#version 330 core\n"
 "layout (location = 0) in vec3 aPos;\n"
+"layout (location = 1) in vec2 aTexCoord;\n"
+"out vec2 TexCoord;\n"
 "uniform mat4 view;\n"
 "uniform mat4 projection;\n"
 "void main()\n"
 "{\n"
 "   gl_Position = projection * view * vec4(aPos, 1.0);\n"
+"   TexCoord = aTexCoord;\n"
 "}\0";
 
 const char *fragmentShaderSource = "#version 330 core\n"
 "out vec4 FragColor;\n"
+"in vec2 TexCoord;\n"
+"uniform sampler2D ourTexture;\n"
 "void main()\n"
 "{\n"
-"    FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);\n"
+"    FragColor = texture(ourTexture, TexCoord);\n"
 "}\0";
+
+// Base directory
+fs::path base = fs::current_path();
+fs::path texture = base / "assets" / "imgs" / "grass.jpg";
 
 // Camera
 Camera camera;
@@ -211,6 +226,13 @@ int main() {
         glm::vec3(-1.3f,  1.0f, -1.5f)
     };
 
+    float texCoords[] = {
+        0.0f, 0.0f,  // lower-left corner  
+        1.0f, 0.0f,  // lower-right corner
+        0.0f, 1.0f,   // top-left corner
+        1.0f, 0.0f   // top-right corner
+    };
+
     unsigned int VBO, VAO;
     glGenVertexArrays(1, &VAO);
     glGenBuffers(1, &VBO);
@@ -224,6 +246,9 @@ int main() {
     // position attribute
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
+    // texture coord attribute
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
 
     // note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound
     // vertex buffer object so afterwards we can safely unbind
@@ -234,6 +259,34 @@ int main() {
     // You can unbind the VAO afterwards so other VAO calls won't accidentally modify this VAO, but this rarely happens. Modifying other
     // VAOs requires a call to glBindVertexArray anyways so we generally don't unbind VAOs (nor VBOs) when it's not directly necessary.
     glBindVertexArray(0);
+
+        // load and create a texture 
+    // -------------------------
+    unsigned int texture1;
+    // texture 1
+    // ---------
+    glGenTextures(1, &texture1);
+    glBindTexture(GL_TEXTURE_2D, texture1);
+    // set the texture wrapping parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    // set texture filtering parameters
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    // load image, create texture and generate mipmaps
+    int width, height, nrChannels;
+    stbi_set_flip_vertically_on_load(true); // tell stb_image.h to flip loaded texture's on the y-axis.
+    unsigned char *data = stbi_load(texture.string().c_str(), &width, &height, &nrChannels, 0);
+    if (data)
+    {
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+        glGenerateMipmap(GL_TEXTURE_2D);
+    }
+    else
+    {
+        cout << "Failed to load texture" << endl;
+    }
+    stbi_image_free(data);
 
     // Keep window alive
     while (!glfwWindowShouldClose(window)) {
@@ -260,8 +313,14 @@ int main() {
         
         view = camera.GetViewMatrix();
 
+        // bind textures on corresponding texture units
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, texture1);
+        glActiveTexture(GL_TEXTURE1);
+
         // Draw square
         glUseProgram(shaderProgram);
+        glUniform1i(glGetUniformLocation(shaderProgram, "ourTexture"), 0);
 
         int viewLoc = glGetUniformLocation(shaderProgram, "view");
         int projLoc = glGetUniformLocation(shaderProgram, "projection");
@@ -271,18 +330,18 @@ int main() {
 
         glBindVertexArray(VAO);
 
-        for (unsigned int i = 0; i < 10; i++) {
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, cubePositions[i]);
-            float angle = 20.0f * i;
-            model = glm::rotate(model, glm::radians(angle) + (float)glfwGetTime(), glm::vec3(1.0f, 0.3f, 0.5f));
-            int modelLoc = glGetUniformLocation(shaderProgram, "model");
-            glUniformMatrix4fv(modelLoc, 1, GL_FALSE, &model[0][0]);
+        glDrawArrays(GL_TRIANGLES, 0, 36);
 
-            glDrawArrays(GL_TRIANGLES, 0, 36);
-        }
+        // for (unsigned int i = 0; i < 10; i++) {
+        //     glm::mat4 model = glm::mat4(1.0f);
+        //     model = glm::translate(model, cubePositions[i]);
+        //     float angle = 20.0f * i;
+        //     model = glm::rotate(model, glm::radians(angle) + (float)glfwGetTime(), glm::vec3(1.0f, 0.3f, 0.5f));
+        //     int modelLoc = glGetUniformLocation(shaderProgram, "model");
+        //     glUniformMatrix4fv(modelLoc, 1, GL_FALSE, &model[0][0]);
 
-        // glBindVertexArray(0);
+        //     glDrawArrays(GL_TRIANGLES, 0, 36);
+        // }
 
         // glfw: swap buffers and poll IO events (keys pressed/reelased, mouse moved, etc.)
         glfwSwapBuffers(window);
